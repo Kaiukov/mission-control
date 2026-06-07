@@ -242,4 +242,102 @@ Web UI (React/Next.js)  ← hooks/WebSocket →  Backend (Node.js)
 | **Терминалы** | tmux | cmux | tmux |
 | **Оркестрация** | Claude Code hooks | Claude Code skills | Opus + скрипты |
 
-Мой подход — взять лучшее из всех трёх: **tmux терминалы (TANK) + GitHub Issues (cmux) + простые скрипты вместо монолита**.
+---
+
+## GitHub-аналоги (найдены 2026-06-07)
+
+### 🥇 Ristretto (⭐16+)
+
+> "The most concentrated shot of multi-agent orchestration"
+
+**Репозиторий:** `jzOcb/ristretto`
+**Язык:** Rust
+**Лицензия:** MIT
+
+**Что делает:** терминал-нативный оркестратор для параллельных AI-агентов. Daemon + TUI + MCP server + channel server.
+
+**Ключевые фичи:**
+- 🤖 Agent-agnostic: Claude Code, Codex, Gemini CLI, любой CLI
+- 📺 Terminal-native TUI: sidebar, split panes, работает через SSH
+- 🌳 Git worktree isolation: каждому агенту своя ветка
+- 📁 File ownership: предотвращает merge conflicts
+- 🔄 Context rotation при 80% заполнении
+- 🔍 Cross-model review: adversarial review между разными моделями
+- 🔧 Auto-recovery: stuck/loop detection
+- 📡 MCP server: 17 tools для оркестрации
+
+**Архитектура:**
+```
+rist (TUI) + rist-mcp (MCP) + rist-channel (events)
+                ↕ Unix Socket
+           ristd (daemon)
+                ↕ PTY
+    Claude Code / Codex / Gemini CLI
+```
+
+**Отличие от нас:** Ristretto — сложный Rust daemon. Наш подход проще: bash + tmux, без daemon.
+
+---
+
+### 🥈 Meow (⭐4)
+
+> "The Makefile of agent orchestration. No Python. No cloud. No magic. Just tmux, TOML, and a binary."
+
+**Репозиторий:** `akatz-ai/meow`
+**Язык:** Go
+**Философия:** ровно наша — terminal-native, agent-agnostic, один бинарник
+
+**Адаптеры под модели (уже готовы!):**
+- `claude-opus` — `claude --dangerously-skip-permissions --model opus`
+- `claude-sonnet` — Sonnet для средней сложности
+- `claude-haiku` — Haiku для простых задач
+- `codex` — Codex CLI
+- `opencode` — OpenCode CLI
+
+**Почему это важно для нас:** Meow уже реализовал **разделение моделей по стоимости** через adapter system. Opus для сложного, Haiku для простого, Codex для кода. Ровно то что мы хотим!
+
+**Формат конфига (TOML):**
+```toml
+[adapter]
+name = "claude-opus"
+description = "Claude Code CLI agent with Opus model"
+
+[spawn]
+command = "claude --dangerously-skip-permissions --model opus"
+resume_command = "claude --model opus --resume {{session_id}}"
+startup_delay = "3s"
+```
+
+**Отличие от нас:** Meow — Go binary, мы — bash-скрипты. Но идея адаптеров отличная.
+
+---
+
+### 🥉 broomva/mission-control
+
+> "AI-native desktop app for multi-project agent orchestration"
+
+**Репозиторий:** `broomva/mission-control`
+**Стек:** Tauri 2.0 + React + Rust
+**UI:** Десктопное приложение (не терминал)
+**Git:** Встроенный (libgit2) — статус, лог, diff, branches
+**Терминалы:** PTY multiplexing через portable-pty
+
+**Отличие от нас:** Десктоп (Tauri), не терминал. Но название один-в-один наше 😄
+
+---
+
+### Другие находки
+
+- **sniffly** (⭐1239) — Claude Code мониторинг, usage stats, но НЕ оркестрация
+- **Claude-Code-Dashboard** (⭐17) — VSCode extension, Claude usage tracking
+
+---
+
+## Что это меняет для нас
+
+1. **Наша идея валидирована** — три проекта делают ровно то же: терминальный TUI для AI-агентов
+2. **Meow ближе всего** — адаптеры моделей, agent-agnostic, TOML конфиги
+3. **Ristretto слишком сложен** для Phase 1 — Rust daemon это overkill
+4. **Можно не изобретать формат адаптеров** — взять TOML как у Meow
+
+**Решение:** строим свой минимальный вариант (bash + tmux), но смотрим на Meow/Ristretto как на reference. Если проект вырастет — можно будет перейти на Meow или Ristretto вместо самописного.

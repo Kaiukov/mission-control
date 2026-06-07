@@ -34,22 +34,17 @@ Termius — это просто терминал. cmux — тул для Claude 
 
 ## 🗺️ Roadmap
 
-### Фаза 1: CLI-прототип (MVP) ✅ стартуем сейчас
+### Фаза 1: Bash-прототип (MVP) — сейчас
 - [ ] Скрипт `pull-issues.sh` — GitHub Issues → tasks.json
-- [ ] Скрипт `run-orchestrator.sh` — Opus читает tasks.json, назначает воркерам
-- [ ] Скрипт `spawn-worker.sh` — Codex CLI в tmux пане
-- [ ] HTML-дашборд (1 файл) — показывает статусы задач
+- [ ] Скрипт `spawn-worker.sh` — Codex CLI в tmux
+- [ ] Скрипт `tui.sh` — tmux layout (список задач + терминал)
+- [ ] Скрипт `run-orchestrator.sh` — Opus читает, назначает
 
-### Фаза 2: Web UI
-- [ ] Next.js приложение (только фронт, без бэкенда)
-- [ ] WebSocket для real-time статуса терминалов
-- [ ] Дашборд: список задач, терминал, кнопки PR/merge
-- [ ] SQLite для истории чатов
-
-### Фаза 3: Production
-- [ ] Авто-деплой через CI (как в портфолио)
-- [ ] Drag & drop скриншотов
-- [ ] Мульти-проект (переключение между репо)
+### Фаза 2: Форк Meow (Go) — после MVP
+- [ ] Форк `Kaiukov/meow` ← `akatz-ai/meow`
+- [ ] Добавить GitHub Issues adapter (сейчас только workflow из TOML)
+- [ ] Opus-оркестратор + дешёвые воркеры через adapters
+- [ ] TUI: task board + split panes (bubbletea)
 
 ## 📐 Что НЕ делаем (YAGNI)
 
