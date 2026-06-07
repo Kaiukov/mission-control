@@ -26,19 +26,15 @@ while true; do
   printf '%s\n' ''
 
   if [ -f "\$MC_DIR/state/tasks.json" ]; then
-    COUNT=\$(jq '.tasks | length' "\$MC_DIR/state/tasks.json" 2>/dev/null || echo 0)
-    if [ "\$COUNT" -eq 0 ]; then
-      printf '%s\n' '  (no tasks — create an issue on GitHub)'
-    else
-      jq -r '.tasks[] | "  [ ]  #\(.number)  \(.title)"' "\$MC_DIR/state/tasks.json" 2>/dev/null
-    fi
+    jq -r '.tasks[] | "  [ ]  #\(.number)  \(.title)"' "\$MC_DIR/state/tasks.json" 2>/dev/null
+  else
+    printf '%s\n' '  (no issues)'
   fi
 
   printf '%s\n' ''
   printf '%s\n' '├──────────────────────────────────────────────────────────────┤'
-  printf '%s\n' '│  [r] run    [q] quit    [Ctrl+b ↑↓] switch pane             │'
+  printf '%s\n' '│  r = run #1    q = quit    ↑↓ = switch pane                │'
   printf '%s\n' '└──────────────────────────────────────────────────────────────┘'
-  printf '%s\n' ''
   sleep 5
 done
 WATCHEOF
@@ -52,16 +48,15 @@ tmux rename-window -t "$SESSION" "mc"
 tmux split-window -v -t "$SESSION" -p 25
 sleep 0.3
 
-# Write help to a temp file, then cat it (clean — no bash prompts)
 HELP_FILE="/tmp/mc-help.txt"
 cat > "$HELP_FILE" << HELPEOF
 
   ▸ HOW TO USE
 
-  1.  Look at tasks above ↑
-  2.  Press r to spawn Codex worker
-  3.  Switch to worker: Ctrl+b ↑↓
-  4.  Or attach directly: tmux attach -t task-1
+  1.  See tasks above ↑
+  2.  Press r to spawn worker for issue #1
+  3.  Press q to quit
+  4.  Switch panes: Ctrl+b, then ↑↓
 
   Repo: $GITHUB_REPO
 
@@ -70,11 +65,11 @@ HELPEOF
 tmux send-keys -t "$SESSION" "clear && cat $HELP_FILE" Enter
 sleep 0.1
 
-# Select top pane
 tmux select-pane -t "$SESSION" -U
 
-# ── Keys ──
-tmux bind-key r "run-shell 'bash $MC_DIR/scripts/spawn-worker.sh'"
-tmux bind-key q "kill-session"
+# ── Keys (no prefix needed with -n) ──
+tmux bind-key -n r "run-shell 'bash $MC_DIR/scripts/spawn-worker.sh 1'"
+tmux bind-key -n q "kill-session"
 
 echo "✅ TUI ready — tmux attach -t $SESSION"
+echo "   Press r to run worker, q to quit"
