@@ -1,0 +1,9 @@
+{"updated":"2026-06-07T14:58:16+00:00","tasks":[
+{"created":"2026-06-05T17:52:57Z","labels":["inbox","ready"],"number":263,"state":"OPEN","title":"Reorganize repo-wide agent and workflow directories","url":"https://github.com/Kaiukov/my-portfolio/issues/263"}
+,
+{"created":"2026-06-05T17:24:53Z","labels":["inbox","ready"],"number":262,"state":"OPEN","title":"Sector allocation shows too many sectors and needs review","url":"https://github.com/Kaiukov/my-portfolio/issues/262"}
+,
+{"created":"2026-06-05T14:16:52Z","labels":["enhancement","ready","needs-review"],"number":259,"state":"OPEN","title":"feat: holdings table — wire Last Price and Day Change from API (replace placeholders)","url":"https://github.com/Kaiukov/my-portfolio/issues/259"}
+,
+{"created":"2026-06-04T21:58:38Z","labels":["documentation","inbox","ready"],"number":254,"state":"OPEN","title":"Create Claude Code plugin — portfolio setup, deploy, Cloudflare, usage guide for AI agents","url":"https://github.com/Kaiukov/my-portfolio/issues/254"}
+]}
