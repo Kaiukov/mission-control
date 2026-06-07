@@ -70,10 +70,11 @@ Your task:
 
 	logFile := filepath.Join(logDir, fmt.Sprintf("%s.log", session))
 
-	// Kill existing session if any
+	// Kill existing session and clean stale state
 	exec.Command("tmux", "kill-session", "-t", session).Run()
+	os.Remove(filepath.Join(dir, "state", "running.json"))
 
-	// Spawn tmux session
+	// Spawn tmux session — read prompt from temp file (avoids shell escaping)
 	tmuxCmd := exec.Command("tmux",
 		"new-session", "-d",
 		"-s", session,
