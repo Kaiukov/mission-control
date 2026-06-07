@@ -4,22 +4,26 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Kaiukov/mission-control/internal/github"
 	"github.com/Kaiukov/mission-control/internal/worker"
 	"github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 // Model holds the TUI state.
 type Model struct {
-	tasks   []github.Issue
-	running *worker.RunningInfo
-	width   int
-	height  int
-	err     error
+	tasks    []github.Issue
+	running  *worker.RunningInfo
+	workerID int        // which issue has a running worker
+	width    int
+	height   int
+	err      error
+	lastMsg  string      // feedback to user
+	logTail  string      // last N lines of worker log
 }
 
 // --- Messages ---
@@ -38,6 +42,10 @@ type runningCheckedMsg struct {
 	info *worker.RunningInfo
 }
 
+type logPollMsg struct {
+	text string
+}
+
 // --- Commands ---
 
 func loadTasksCmd() tea.Cmd {
@@ -46,11 +54,11 @@ func loadTasksCmd() tea.Cmd {
 		path := filepath.Join(dir, "state", "tasks.json")
 		data, err := os.ReadFile(path)
 		if err != nil {
-			return tasksLoadedMsg{err: fmt.Errorf("read tasks.json: %w", err)}
+			return tasksLoadedMsg{err: fmt.Errorf("no tasks — run 'mc pull' first")}
 		}
 		var tl github.TaskList
 		if err := json.Unmarshal(data, &tl); err != nil {
-			return tasksLoadedMsg{err: fmt.Errorf("parse tasks.json: %w", err)}
+			return tasksLoadedMsg{err: fmt.Errorf("bad tasks.json")}
 		}
 		return tasksLoadedMsg{tasks: tl.Tasks}
 	}
@@ -79,45 +87,101 @@ func checkRunningCmd() tea.Cmd {
 	}
 }
 
-// mcDir returns the Mission Control root directory.
+// pollLogCmd returns a command that reads the last N lines of the worker log.
+func pollLogCmd(taskNum int) tea.Cmd {
+	return func() tea.Msg {
+		dir := mcDir()
+		logPath := filepath.Join(dir, "logs", fmt.Sprintf("task-%d.log", taskNum))
+		data, err := os.ReadFile(logPath)
+		if err != nil {
+			return logPollMsg{text: "(worker starting...)"}
+		}
+		lines := strings.Split(string(data), "\n")
+		start := len(lines) - 25
+		if start < 0 {
+			start = 0
+		}
+		return logPollMsg{text: strings.Join(lines[start:], "\n")}
+	}
+}
+
+// logTicker returns a command that polls the log every 1 second.
+func logTicker(taskNum int) tea.Cmd {
+	return tea.Tick(1*time.Second, func(t time.Time) tea.Msg {
+		dir := mcDir()
+		logPath := filepath.Join(dir, "logs", fmt.Sprintf("task-%d.log", taskNum))
+		data, err := os.ReadFile(logPath)
+		if err != nil {
+			return logPollMsg{text: "(worker starting...)"}
+		}
+		lines := strings.Split(string(data), "\n")
+		start := len(lines) - 25
+		if start < 0 {
+			start = 0
+		}
+		return logPollMsg{text: strings.Join(lines[start:], "\n")}
+	})
+}
+
 func mcDir() string {
 	if d := os.Getenv("MC_DIR"); d != "" {
 		return d
+	}
+	// Find from executable location
+	if exe, err := os.Executable(); err == nil {
+		return filepath.Dir(exe)
+	}
+	// Try to find go module root
+	cmd := exec.Command("sh", "-c", "cd \"$(dirname \"$0\")\" && git rev-parse --show-toplevel 2>/dev/null || pwd")
+	cmd.Dir = "."
+	if out, err := cmd.Output(); err == nil {
+		return strings.TrimSpace(string(out))
 	}
 	return "."
 }
 
 // --- Model ---
 
-// Init implements tea.Model.
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(loadTasksCmd(), checkRunningCmd())
 }
 
-// Update implements tea.Model.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 
 	case tea.KeyMsg:
 		switch msg.String() {
 
-		case "q", "ctrl+c":
+		case "q", "ctrl+c", "esc":
 			return m, tea.Quit
 
 		case "r":
+			m.lastMsg = "Refreshing..."
 			return m, tea.Batch(loadTasksCmd(), checkRunningCmd())
 
 		case "1", "2", "3", "4", "5", "6", "7", "8", "9":
-			idx := int(msg.String()[0] - '1') // '1' → 0, '9' → 8
+			idx := int(msg.String()[0] - '1')
 			if idx < len(m.tasks) {
+				// Prevent double-spawn
+				if m.running != nil {
+					m.lastMsg = fmt.Sprintf("Worker already running for #%d. Press 'r' to refresh.", m.running.Number)
+					return m, nil
+				}
 				issue := m.tasks[idx]
+				m.lastMsg = fmt.Sprintf("Spawning worker for #%d...", issue.Number)
+				m.workerID = issue.Number
 				return m, spawnWorkerCmd(issue.Number)
 			}
 
 		case "0":
-			// index 9 (the 10th task) if we want to support it
 			if len(m.tasks) > 9 {
+				if m.running != nil {
+					m.lastMsg = "Worker already running."
+					return m, nil
+				}
 				issue := m.tasks[9]
+				m.lastMsg = fmt.Sprintf("Spawning worker for #%d...", issue.Number)
+				m.workerID = issue.Number
 				return m, spawnWorkerCmd(issue.Number)
 			}
 		}
@@ -137,14 +201,36 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case workerSpawnedMsg:
 		if msg.err != nil {
-			m.err = fmt.Errorf("spawn #%d: %w", msg.issueNum, msg.err)
+			m.err = fmt.Errorf("spawn #%d: %v", msg.issueNum, msg.err)
+			m.lastMsg = ""
+			m.workerID = 0
 		} else {
 			m.err = nil
+			m.lastMsg = fmt.Sprintf("✓ Worker #%d spawned — watching log...", msg.issueNum)
 		}
-		return m, checkRunningCmd()
+		return m, tea.Batch(checkRunningCmd(), logTicker(msg.issueNum))
 
 	case runningCheckedMsg:
+		wasRunning := m.running != nil
 		m.running = msg.info
+		if msg.info == nil && wasRunning {
+			// Worker finished
+			m.lastMsg = "✓ Worker finished!"
+			m.workerID = 0
+			m.logTail = ""
+			return m, loadTasksCmd()
+		}
+		if msg.info != nil {
+			m.workerID = msg.info.Number
+			return m, logTicker(msg.info.Number)
+		}
+
+	case logPollMsg:
+		m.logTail = msg.text
+		// Keep polling if worker still running
+		if m.running != nil {
+			return m, logTicker(m.running.Number)
+		}
 	}
 
 	return m, nil
@@ -152,90 +238,100 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // --- View ---
 
-var (
-	titleStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
-	statusStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("39"))
-	errorStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
-	helpStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-	borderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-)
-
 func (m Model) View() string {
 	var b strings.Builder
 
-	// Title
-	b.WriteString(titleStyle.Render("🛸 MISSION CONTROL"))
-	b.WriteString("\n")
-	b.WriteString(borderStyle.Render(strings.Repeat("─", 50)))
-	b.WriteString("\n\n")
-
-	// Error
-	if m.err != nil {
-		b.WriteString(errorStyle.Render(fmt.Sprintf("  ✗ %s", m.err.Error())))
-		b.WriteString("\n\n")
+	div := strings.Repeat("─", min(m.width-2, 78))
+	if div == "" {
+		div = "──"
 	}
 
-	// Task list
+	// Header
+	b.WriteString("\n  🛸 MISSION CONTROL")
+	if m.running != nil {
+		b.WriteString(fmt.Sprintf("  ⏳ #%d running (%s)", m.running.Number, m.running.Model))
+	}
+	b.WriteString("\n  " + div + "\n\n")
+
+	// Feedback message
+	if m.lastMsg != "" {
+		b.WriteString("  " + m.lastMsg + "\n\n")
+	}
+
+	// --- Task list (top half) ---
+	taskHeight := m.height/2 - 4
+	if taskHeight < 3 {
+		taskHeight = 3
+	}
+
 	if len(m.tasks) == 0 {
-		b.WriteString("  (no issues loaded — press 'r' to refresh or run 'mc pull')\n")
+		b.WriteString("  (no issues — run 'mc pull')\n")
 	} else {
 		for i, t := range m.tasks {
+			if i >= taskHeight {
+				b.WriteString(fmt.Sprintf("  ... and %d more\n", len(m.tasks)-taskHeight))
+				break
+			}
 			key := fmt.Sprintf("%d", i+1)
 			if i >= 9 {
 				key = " "
 			}
+
 			checkbox := "[ ]"
+			status := ""
 			if m.running != nil && m.running.Number == t.Number {
 				checkbox = "[⏳]"
+				status = " ← worker running"
 			}
-			line := fmt.Sprintf("  %s %s  #%-3d %s", key, checkbox, t.Number, truncate(t.Title, m.width-20))
-			b.WriteString(line)
-			b.WriteString("\n")
+
+			title := t.Title
+			maxLen := m.width - 30
+			if maxLen < 20 {
+				maxLen = 20
+			}
+			if len(title) > maxLen {
+				title = title[:maxLen-3] + "..."
+			}
+
+			b.WriteString(fmt.Sprintf("  %s %s  #%-3d %s%s\n", key, checkbox, t.Number, title, status))
 		}
 	}
 
-	// Divider
-	b.WriteString("\n")
-	b.WriteString(borderStyle.Render(strings.Repeat("─", 50)))
-	b.WriteString("\n")
+	// --- Worker log (bottom half) ---
+	b.WriteString("\n  " + div + "\n")
 
-	// Help
-	b.WriteString(helpStyle.Render("  1-9: spawn  r: refresh  q: quit"))
-	b.WriteString("\n")
-
-	// Running status
-	if m.running != nil {
-		b.WriteString(statusStyle.Render(fmt.Sprintf("  ⏳ worker #%d running (%s)", m.running.Number, m.running.Model)))
-		b.WriteString("\n")
+	if m.logTail != "" {
+		b.WriteString("  ── Worker output (last 25 lines) ──\n\n")
+		for _, line := range strings.Split(m.logTail, "\n") {
+			if len(line) > m.width-4 && m.width > 10 {
+				line = line[:m.width-7] + "..."
+			}
+			b.WriteString("  " + line + "\n")
+		}
 	} else {
-		b.WriteString(helpStyle.Render("  no workers running"))
-		b.WriteString("\n")
+		b.WriteString("\n  How to use:\n")
+		b.WriteString("    1-9 = spawn worker for that issue\n")
+		b.WriteString("    r   = refresh task list\n")
+		b.WriteString("    q   = quit\n")
+		b.WriteString("\n  Worker output will appear here when running.\n")
 	}
 
-	// Bottom border
-	b.WriteString(borderStyle.Render(strings.Repeat("─", 50)))
+	// Footer
+	b.WriteString("\n  " + div + "\n")
+	b.WriteString("  1-9: run   r: refresh   q: quit")
 
 	return b.String()
 }
 
-func truncate(s string, maxLen int) string {
-	if maxLen < 4 {
-		return s[:maxLen]
+func min(a, b int) int {
+	if a < b {
+		return a
 	}
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen-3] + "..."
+	return b
 }
 
 // Run starts the bubbletea TUI program.
 func Run() error {
-	// Verify state directory exists
-	sd := filepath.Join(mcDir(), "state")
-	if _, err := os.Stat(sd); os.IsNotExist(err) {
-		return fmt.Errorf("state directory not found at %s — run 'mc pull' first", sd)
-	}
-
 	m := Model{}
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
