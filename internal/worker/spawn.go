@@ -70,48 +70,50 @@ Your task:
 
 	logFile := filepath.Join(logDir, fmt.Sprintf("%s.log", session))
 
-	// Kill existing session and clean stale state
-	exec.Command("tmux", "kill-session", "-t", session).Run()
+	// Clean stale state
 	os.Remove(filepath.Join(dir, "state", "running.json"))
 
-	// Spawn tmux session — read prompt from temp file (avoids shell escaping)
-	tmuxCmd := exec.Command("tmux",
-		"new-session", "-d",
-		"-s", session,
-		"-x", "120", "-y", "40",
-		"-c", repoDir,
-		"bash", "-c",
-		fmt.Sprintf(
-			"echo '🔧 Worker #%d starting (model: %s)...'; echo ''; "+
-				"codex exec --model %s '%s' 2>&1 | tee %s; "+
-				"echo ''; echo '✅ Worker #%d finished'",
-			issueNum, model, model, prompt, logFile, issueNum,
-		),
+	// Spawn Hermes worker directly (no tmux needed — hermes chat -q is non-interactive)
+	workerCmd := exec.Command("hermes",
+		"chat", "-q",
+		"--model", "opencode-go/deepseek-v4-flash",
+		prompt,
 	)
-	if err := tmuxCmd.Run(); err != nil {
-		return fmt.Errorf("tmux new-session: %w", err)
+	workerCmd.Dir = repoDir
+
+	logF, err := os.Create(logFile)
+	if err != nil {
+		return fmt.Errorf("create log file: %w", err)
+	}
+	workerCmd.Stdout = logF
+	workerCmd.Stderr = logF
+
+	fmt.Fprintf(logF, "🔧 Worker #%d starting (model: opencode-go/deepseek-v4-flash)...\n\n", issueNum)
+	if err := workerCmd.Start(); err != nil {
+		logF.Close()
+		return fmt.Errorf("start worker: %w", err)
 	}
 
 	// Write running.json
 	info := RunningInfo{
 		Number:  issueNum,
 		Started: time.Now().Format(time.RFC3339),
-		Model:   model,
+		Model:   "opencode-go/deepseek-v4-flash",
 	}
 	stateDir := filepath.Join(dir, "state")
-	if err := os.MkdirAll(stateDir, 0755); err != nil {
-		return fmt.Errorf("create state dir: %w", err)
-	}
-	data, err := json.MarshalIndent(info, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal running info: %w", err)
-	}
-	runningFile := filepath.Join(stateDir, "running.json")
-	if err := os.WriteFile(runningFile, data, 0644); err != nil {
-		return fmt.Errorf("write running.json: %w", err)
-	}
+	os.MkdirAll(stateDir, 0755)
+	data, _ := json.MarshalIndent(info, "", "  ")
+	os.WriteFile(filepath.Join(stateDir, "running.json"), data, 0644)
 
-	fmt.Printf("✓ Worker spawned: tmux attach -t %s\n", session)
+	// Wait for worker in background, then clean up
+	go func() {
+		workerCmd.Wait()
+		fmt.Fprintf(logF, "\n✅ Worker #%d finished\n", issueNum)
+		logF.Close()
+		os.Remove(filepath.Join(dir, "state", "running.json"))
+	}()
+
+	fmt.Printf("✓ Worker #%d spawned (hermes, opencode-go/deepseek-v4-flash)\n", issueNum)
 	fmt.Printf("  Log: logs/%s.log\n", session)
 	return nil
 }
