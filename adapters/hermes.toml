@@ -1,0 +1,6 @@
+[adapter]
+name = "hermes"
+description = "Hermes Agent — orchestrator (deepseek-v4-pro) + worker (deepseek-v4-flash)"
+
+[spawn]
+command = "hermes chat -q --model opencode-go/deepseek-v4-flash"

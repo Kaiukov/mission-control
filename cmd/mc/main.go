@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/Kaiukov/mission-control/internal/github"
 	"github.com/Kaiukov/mission-control/internal/tui"
@@ -22,6 +23,7 @@ func main() {
 Commands:
   pull     Fetch GitHub issues and save to state/tasks.json
   run <N>  Spawn a worker for issue N
+  log <N>  Tail worker log for issue N
   tui      Launch the terminal dashboard
   status   Show currently running workers`,
 		SilenceUsage: true,
@@ -29,6 +31,7 @@ Commands:
 
 	rootCmd.AddCommand(pullCmd())
 	rootCmd.AddCommand(runCmd())
+	rootCmd.AddCommand(logCmd())
 	rootCmd.AddCommand(tuiCmd())
 	rootCmd.AddCommand(statusCmd())
 
@@ -166,6 +169,31 @@ func statusCmd() *cobra.Command {
 			fmt.Printf("   Model:   %s\n", info.Model)
 			fmt.Printf("   Started: %s\n", info.Started)
 			fmt.Printf("   Session: tmux attach -t task-%d\n", info.Number)
+			fmt.Printf("   Log:     logs/task-%d.log\n", info.Number)
+			return nil
+		},
+	}
+}
+
+func logCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "log <issue-number>",
+		Short: "Tail worker log",
+		Long:  "Show the last 50 lines of the worker log for the given issue number.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			num := args[0]
+			logPath := filepath.Join(mcDir(), "logs", fmt.Sprintf("task-%s.log", num))
+			data, err := os.ReadFile(logPath)
+			if err != nil {
+				return fmt.Errorf("no log for task-%s: %w\nHint: worker may not have started yet, or tmux session died", num, err)
+			}
+			lines := strings.Split(string(data), "\n")
+			start := len(lines) - 50
+			if start < 0 {
+				start = 0
+			}
+			fmt.Print(strings.Join(lines[start:], "\n"))
 			return nil
 		},
 	}
