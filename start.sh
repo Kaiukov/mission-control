@@ -2,7 +2,9 @@
 # start.sh — launch Mission Control
 set -euo pipefail
 
-export MC_DIR="${MC_DIR:-/root/mission-control}"
+# Auto-detect MC_DIR from script location
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export MC_DIR="${MC_DIR:-$SCRIPT_DIR}"
 cd "$MC_DIR"
 
 # Source .env if exists

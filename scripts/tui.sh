@@ -2,7 +2,9 @@
 # tui.sh — Mission Control terminal dashboard
 set -euo pipefail
 
-MC_DIR="${MC_DIR:-/root/mission-control}"
+# Auto-detect MC_DIR from script location
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MC_DIR="${MC_DIR:-$(dirname "$SCRIPT_DIR")}"
 SESSION="mc"
 
 # Kill existing

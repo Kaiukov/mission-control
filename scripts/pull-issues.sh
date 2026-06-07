@@ -2,7 +2,9 @@
 # pull-issues.sh — GitHub Issues → tasks.json
 set -euo pipefail
 
-MC_DIR="${MC_DIR:-/root/mission-control}"
+# Auto-detect MC_DIR from script location
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MC_DIR="${MC_DIR:-$(dirname "$SCRIPT_DIR")}"
 GITHUB_REPO="${GITHUB_REPO:-Kaiukov/my-portfolio}"
 OUTFILE="$MC_DIR/state/tasks.json"
 NOW=$(date -Iseconds)
