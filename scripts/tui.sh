@@ -2,43 +2,50 @@
 # tui.sh — Mission Control terminal dashboard
 set -euo pipefail
 
-# Auto-detect MC_DIR from script location
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MC_DIR="${MC_DIR:-$(dirname "$SCRIPT_DIR")}"
+GITHUB_REPO="${GITHUB_REPO:-Kaiukov/mission-control}"
 SESSION="mc"
 
-# Kill existing
 tmux kill-session -t "$SESSION" 2>/dev/null || true
 
-# Create session
-tmux new-session -d -s "$SESSION" -x 140 -y 40
+# Write watch script (double-quoted heredoc so env vars get baked in)
+WATCH_SCRIPT="/tmp/mc-watch-$$.sh"
+cat > "$WATCH_SCRIPT" << WATCHEOF
+#!/bin/bash
+while true; do
+  clear
+  echo "🛸 Mission Control — \$(date +%H:%M:%S)"
+  echo " Repo: $GITHUB_REPO"
+  echo ""
+  cat $MC_DIR/state/tasks.json 2>/dev/null | jq -r '.tasks[] | "  \\(.state[:1])  #\\(.number)  \\(.title[:55])"' 2>/dev/null || echo "  (no tasks — run pull-issues.sh)"
+  echo ""
+  echo "────────────────────────────────────────────"
+  echo " r=run  q=quit  ↑↓=switch panes"
+  sleep 5
+done
+WATCHEOF
+chmod +x "$WATCH_SCRIPT"
 
-# Rename window
-tmux rename-window -t "$SESSION" "🛸 mission-control"
+# Start session
+tmux new-session -d -s "$SESSION" -x 140 -y 40 "$WATCH_SCRIPT"
+tmux rename-window -t "$SESSION" "mc"
 
-# Top pane (70%): task board
-TASKS_CMD="cat $MC_DIR/state/tasks.json 2>/dev/null | jq -r '.tasks[] | \"\(.state[:1]) #\(.number) \(.title[:50])\"' 2>/dev/null || echo 'No tasks yet — run pull-issues.sh first'"
-tmux send-keys -t "$SESSION" "watch -n 5 -t '$TASKS_CMD'" C-m
-tmux send-keys -t "$SESSION" "clear" C-m
-
-# Bottom pane (30%): terminal
+# Bottom pane
 tmux split-window -v -t "$SESSION" -p 30
-tmux send-keys -t "$SESSION" "echo '┌─────────────────────────────────────────┐'" C-m
-tmux send-keys -t "$SESSION" "echo '│  🛸 Mission Control v0.1               │'" C-m
-tmux send-keys -t "$SESSION" "echo '│                                         │'" C-m
-tmux send-keys -t "$SESSION" "echo '│  r — run selected task                 │'" C-m
-tmux send-keys -t "$SESSION" "echo '│  s — stop worker                       │'" C-m
-tmux send-keys -t "$SESSION" "echo '│  Ctrl+b ↑↓ — switch panes              │'" C-m
-tmux send-keys -t "$SESSION" "echo '│  q — quit                              │'" C-m
-tmux send-keys -t "$SESSION" "echo '└─────────────────────────────────────────┘'" C-m
+sleep 0.3
+tmux send-keys -t "$SESSION" 'echo "┌──────────────────────────────────────────┐"' Enter
+tmux send-keys -t "$SESSION" 'echo "│  🛸  Mission Control v0.1               │"' Enter
+tmux send-keys -t "$SESSION" "echo '│  repo: $GITHUB_REPO'" Enter
+tmux send-keys -t "$SESSION" 'echo "│  r=run worker  q=quit                   │"' Enter
+tmux send-keys -t "$SESSION" 'echo "└──────────────────────────────────────────┘"' Enter
 
-# Select top pane for navigation
+# Select top pane
 tmux select-pane -t "$SESSION" -U
 
-# Bind keys (global — apply in mc session)
-tmux bind-key r "run-shell 'bash $MC_DIR/scripts/spawn-worker.sh'"
+# Bind keys
 tmux bind-key q "kill-session"
 
 echo "🛸 Mission Control TUI launched"
 echo "   Attach: tmux attach -t $SESSION"
-echo "   Tasks in top pane, terminal in bottom"
+echo "   Repo: $GITHUB_REPO"
