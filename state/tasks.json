@@ -1,3 +1,17 @@
-{"updated":"2026-06-07T15:18:40+00:00","tasks":[
-{"created":"2026-06-07T15:15:19Z","labels":["enhancement"],"number":1,"state":"OPEN","title":"feat: orchestrator-worker communication protocol","url":"https://github.com/Kaiukov/mission-control/issues/1"}
-]}
+{
+  "updated": "2026-06-07T15:38:36Z",
+  "tasks": [
+    {
+      "number": 1,
+      "title": "feat: orchestrator-worker communication protocol",
+      "state": "OPEN",
+      "url": "https://github.com/Kaiukov/mission-control/issues/1",
+      "created": "",
+      "labels": [
+        {
+          "name": "enhancement"
+        }
+      ]
+    }
+  ]
+}

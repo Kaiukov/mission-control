@@ -1,0 +1,6 @@
+[adapter]
+name = "opencode-flash"
+description = "OpenCode Go with DeepSeek V4 Flash — test orchestrator & worker"
+
+[spawn]
+command = "codex exec --model opencode-go/deepseek-v4-flash"
