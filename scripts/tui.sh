@@ -35,9 +35,9 @@ tmux send-keys -t "$SESSION" "echo '└─────────────�
 # Select top pane for navigation
 tmux select-pane -t "$SESSION" -U
 
-# Bind keys
-tmux bind-key -t "$SESSION" r "run-shell 'bash $MC_DIR/scripts/spawn-worker.sh \$(tmux display-message -p \"#S\")'"
-tmux bind-key -t "$SESSION" q "kill-session"
+# Bind keys (global — apply in mc session)
+tmux bind-key r "run-shell 'bash $MC_DIR/scripts/spawn-worker.sh'"
+tmux bind-key q "kill-session"
 
 echo "🛸 Mission Control TUI launched"
 echo "   Attach: tmux attach -t $SESSION"
